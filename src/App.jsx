@@ -23,6 +23,21 @@ const defaultCSV = `建立時間,知悉時間,發生日期,發生時間,發生�
 ,,2026年02月26日,11:52,美勞教室,4年08班午餐紛爭,疑似霸凌,,黃宇樂、呂生,"大家開始攻擊黃宇樂，一直說他很髒、不衛生，還有男同學說他會把餐具弄鞋底之類的",黃宇樂想提早回教室，老師請同學攔住，後續通報處理中,,生教組長,處理中,
 ,,2026年03月15日,09:20,體育館,6年01班體育課衝突,校園糾紛,,陳大文、林小明,因比賽輸贏引發口角推擠,,生教組介入處理中,,生教組長,處理中,`;
 
+// 儀表板配色與狀態樣式
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
+const STATUS_STYLES = {
+  '已結案': { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' },
+  '處理中': { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
+  '未處理': { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200' }
+};
+
+// =========================================================================
+// ★ 終極解法：在這裡貼上您的 Google 試算表網址 ★
+// 請將您的網址貼在下方單引號內 (例如：'https://docs.google.com/spreadsheets/d/您的ID/edit...')
+// 這樣主任或校長打開協作平台時，系統就會全自動載入，永遠不用再手動設定了！
+// =========================================================================
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1QBb2j5Yk2P6Ww0LO9zSVrJQt1fIBmnhhwcEBMdwvZrw/edit?gid=0#gid=0'; 
+
 // CSV 解析函數
 const parseCSV = (text) => {
   const lines = [];
@@ -61,14 +76,6 @@ const parseCSV = (text) => {
   return lines;
 };
 
-// 儀表板配色
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
-const STATUS_STYLES = {
-  '已結案': { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' },
-  '處理中': { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
-  '未處理': { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200' }
-};
-
 export default function App() {
   const [data, setData] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -77,7 +84,7 @@ export default function App() {
   // Google Sheets 連動狀態
   const [sheetUrl, setSheetUrl] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState({ type: 'success', message: '目前使用預設資料' });
+  const [syncStatus, setSyncStatus] = useState({ type: 'success', message: '準備就緒' });
   const [showSettings, setShowSettings] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(null);
 
@@ -87,12 +94,15 @@ export default function App() {
 
   // 初始化載入
   useEffect(() => {
-    const savedUrl = localStorage.getItem('schoolSafetySheetUrl');
-    if (savedUrl) {
-      setSheetUrl(savedUrl);
-      fetchGoogleSheet(savedUrl);
+    // 優先讀取寫死在程式碼裡的網址，沒有才找瀏覽器暫存
+    const targetUrl = DEFAULT_SHEET_URL || localStorage.getItem('schoolSafetySheetUrl');
+    
+    if (targetUrl) {
+      setSheetUrl(targetUrl);
+      fetchGoogleSheet(targetUrl);
     } else {
       loadData(defaultCSV);
+      setSyncStatus({ type: 'info', message: '目前使用預設示範資料' });
     }
     
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -110,9 +120,8 @@ export default function App() {
         obj[header.trim()] = line[index] ? line[index].trim() : '';
       });
 
-      // ★ 台灣學年度演算法 (自動計算學期) ★
+      // ★ 台灣學年度演算法 (自動計算學期，支援多種日期格式) ★
       if (obj['發生日期']) {
-        // 【修正】支援多種日期格式：2026年02月、2026/02/15、2026-02-15 等
         const match = obj['發生日期'].match(/(\d{4})[年\-\/](\d{1,2})/);
         if (match) {
           const year = parseInt(match[1]);
@@ -140,7 +149,6 @@ export default function App() {
     
     // 依日期排序 (近到遠)
     jsonData.sort((a, b) => {
-      // 【修正】強化日期排序，不管斜線、橫線、中文字都能排
       const parseDate = (dateStr) => new Date((dateStr || '').replace(/[年月/]/g, '-').replace(/日/g, ''));
       const dateA = parseDate(a['發生日期']);
       const dateB = parseDate(b['發生日期']);
@@ -149,10 +157,10 @@ export default function App() {
     
     // 提取可選的學期選單 (去重複並排序)
     const semesters = Array.from(new Set(jsonData.map(item => item['學年度學期']))).filter(s => s !== '未標示');
-    semesters.sort((a, b) => b.localeCompare(a)); // 新的學期排前面
+    semesters.sort((a, b) => b.localeCompare(a)); 
     setAvailableSemesters(semesters);
     
-    // 預設選擇最新的學期 (如果有資料)
+    // 預設選擇最新的學期 (如果有資料且目前為"全部")
     if (semesters.length > 0 && selectedSemester === '全部') {
       setSelectedSemester(semesters[0]);
     }
@@ -188,7 +196,11 @@ export default function App() {
       loadData(csvText);
       setSyncStatus({ type: 'success', message: '同步成功' });
       setLastSyncTime(new Date());
-      localStorage.setItem('schoolSafetySheetUrl', targetUrl);
+      
+      // 只有在沒有寫死 URL 的情況下，才存入 localStorage
+      if (!DEFAULT_SHEET_URL) {
+        localStorage.setItem('schoolSafetySheetUrl', targetUrl);
+      }
       setShowSettings(false);
     } catch (error) {
       console.error(error);
@@ -200,7 +212,23 @@ export default function App() {
   };
 
   const handleSaveSettings = () => fetchGoogleSheet(sheetUrl);
-  const handlePrint = () => window.print();
+
+  const handlePrint = () => {
+    // 判斷是否在 iframe 中 (例如 Google 協作平台)
+    if (window !== window.parent) {
+      // 在 iframe 中：直接開啟新分頁進行滿版顯示與列印
+      const printWindow = window.open(window.location.href, '_blank');
+      // 如果瀏覽器沒有阻擋彈出視窗，我們在新視窗載入完成後觸發列印
+      if (printWindow) {
+         printWindow.onload = () => {
+             printWindow.print();
+         };
+      }
+    } else {
+      // 不在 iframe 中 (例如已經是新分頁或是直接開 Vercel 網址)：直接列印
+      window.print();
+    }
+  };
 
   // ================= 依學期過濾資料 =================
   const filteredData = useMemo(() => {
@@ -230,12 +258,11 @@ export default function App() {
     return { total: filteredData.length, closed, processing, students: uniqueStudents.size };
   }, [filteredData]);
 
-  // 圖表資料：月份趨勢 (全自動擷取，無需手動新增月份)
+  // 圖表資料：月份趨勢
   const trendData = useMemo(() => {
     const counts = {};
     filteredData.forEach(item => {
       const dateStr = item['發生日期'] || '';
-      // 【修正】確保趨勢圖也能讀懂多種日期格式
       const match = dateStr.match(/(\d{4})[年\-\/](\d{1,2})/);
       if (match) {
         const month = `${match[1]}/${match[2].padStart(2, '0')}`;
@@ -255,9 +282,8 @@ export default function App() {
     return Object.keys(counts).map(key => ({ name: key, value: counts[key] })).sort((a,b) => b.value - a.value);
   }, [filteredData]);
 
-  // ★ 升級圖表：各年級事件統計 (取代無用的地點統計) ★
+  // 圖表資料：各年級事件統計
   const gradeData = useMemo(() => {
-    // 預設1~6年級，確保圖表完整性
     const counts = { '1年級': 0, '2年級': 0, '3年級': 0, '4年級': 0, '5年級': 0, '6年級': 0 };
     const classRegex = /(\d+)年\d+班/; 
     
@@ -274,7 +300,7 @@ export default function App() {
     
     return Object.keys(counts)
       .map(key => ({ grade: key, count: counts[key] }))
-      .filter(item => item.count > 0); // 只顯示有事件的年級
+      .filter(item => item.count > 0); 
   }, [filteredData]);
 
   // 圖表資料：前十大事件班級
@@ -324,7 +350,7 @@ export default function App() {
       {/* 設定彈出視窗 Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
             <div className="bg-slate-800 px-6 py-4 flex justify-between items-center text-white">
               <h3 className="font-bold flex items-center gap-2"><LinkIcon className="w-5 h-5" /> 連結 Google 試算表</h3>
               <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white transition-colors">
@@ -341,30 +367,41 @@ export default function App() {
                   <li>複製網址並貼在下方</li>
                 </ol>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">試算表網址 (URL)</label>
-                <input 
-                  type="text" 
-                  value={sheetUrl}
-                  onChange={(e) => setSheetUrl(e.target.value)}
-                  placeholder="https://docs.google.com/spreadsheets/d/..."
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
-                />
+              
+              {DEFAULT_SHEET_URL ? (
+                <div className="bg-emerald-50 text-emerald-700 p-4 rounded-xl text-sm border border-emerald-200 flex gap-2">
+                  <CheckCircle className="w-5 h-5 shrink-0" />
+                  <p>您已在程式碼中寫死專屬網址，系統將全自動載入，無需在此手動設定。</p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">試算表網址 (URL)</label>
+                  <input 
+                    type="text" 
+                    value={sheetUrl}
+                    onChange={(e) => setSheetUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                  />
+                </div>
+              )}
+            </div>
+            
+            {!DEFAULT_SHEET_URL && (
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowSettings(false)} className="px-5 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors">
+                  取消
+                </button>
+                <button 
+                  onClick={handleSaveSettings}
+                  disabled={isSyncing || !sheetUrl.trim()}
+                  className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  儲存並載入
+                </button>
               </div>
-            </div>
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              <button onClick={() => setShowSettings(false)} className="px-5 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors">
-                取消
-              </button>
-              <button 
-                onClick={handleSaveSettings}
-                disabled={isSyncing || !sheetUrl.trim()}
-                className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                儲存並載入
-              </button>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -383,7 +420,7 @@ export default function App() {
           </div>
           
           <div className="flex items-center justify-between w-full md:w-auto gap-3">
-            {/* ★ 學期過濾器 ★ */}
+            {/* 學期過濾器 */}
             <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
               <select 
                 value={selectedSemester} 
@@ -408,7 +445,7 @@ export default function App() {
               </div>
             </div>
             
-            <button onClick={() => fetchGoogleSheet()} disabled={isSyncing || !sheetUrl} className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors tooltip disabled:opacity-50 border border-slate-700" title="立即同步最新資料">
+            <button onClick={() => fetchGoogleSheet()} disabled={isSyncing || (!sheetUrl && !DEFAULT_SHEET_URL)} className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors tooltip disabled:opacity-50 border border-slate-700" title="立即同步最新資料">
               <RefreshCw className={`w-5 h-5 ${isSyncing ? 'text-blue-400 animate-spin' : 'text-slate-300'}`} />
             </button>
             <button onClick={() => setShowSettings(true)} className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors tooltip border border-slate-700" title="設定資料來源">
@@ -570,7 +607,7 @@ export default function App() {
             )}
           </div>
 
-          {/* ★ 新圖表：各年級事件統計 (取代舊的地點分析) ★ */}
+          {/* 各年級事件統計 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
